@@ -280,13 +280,58 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    return jsonResponse({
-      step: "done",
-      queries,
-      total_search_results: allResults.length,
-      fetched_pages: pages.length,
-      listings: savedListings,
-    });
+      // Step 5: Run the match function to score each listing against the profile.
+      const listingIds = savedListings
+        .filter((l) => l.id)
+        .map((l) => l.id);
+
+      let matches: unknown[] = [];
+      if (listingIds.length > 0) {
+        const matchRes = await fetch(`${supabaseUrl}/functions/v1/match`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ listing_ids: listingIds }),
+        });
+
+        if (matchRes.ok) {
+          const matchData = await matchRes.json().catch(() => null);
+          if (matchData && Array.isArray(matchData.matches)) {
+            matches = matchData.matches;
+          }
+        } else {
+          console.error(`match function failed: ${matchRes.status}`);
+        }
+      }
+
+      // Attach match data to each listing.
+      const matchesByListingId = new Map<string, unknown>();
+      for (const m of matches) {
+        const mo = m as { listing_id?: string };
+        if (mo.listing_id) matchesByListingId.set(mo.listing_id, m);
+      }
+
+      const listingsWithMatches = savedListings.map((l) => ({
+        ...l,
+        match: matchesByListingId.get(l.id) ?? null,
+      }));
+
+      // Sort by match score descending.
+      listingsWithMatches.sort((a, b) => {
+        const sa = ((a.match as { score?: number })?.score) ?? 0;
+        const sb = ((b.match as { score?: number })?.score) ?? 0;
+        return sb - sa;
+      });
+
+      return jsonResponse({
+        step: "done",
+        queries,
+        total_search_results: allResults.length,
+        fetched_pages: pages.length,
+        listings: listingsWithMatches,
+      });
   } catch (err) {
     console.error("discover error:", err);
     const message =

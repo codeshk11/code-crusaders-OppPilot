@@ -1,6 +1,10 @@
 {
   "projectId": "72337887",
   "functions": {
+    "discover": {
+      "hasChanged": false,
+      "hash": "7e6a7baa13a18e39da2f106d9349637b9a934e916dfd2d15c48635e8c02dc7a2"
+    },
     "extract-listing": {
       "hasChanged": false,
       "hash": "61c7943c78e6b89d7b215c0bca3c222f4c99ae3219a436d39f2edf6c74e7e63b"
@@ -13,9 +17,9 @@
       "hasChanged": false,
       "hash": "15a1af6185f46a85714265f109f9446dde0a3f537fa2514ab375d0756c6709ca"
     },
-    "discover": {
+    "match": {
       "hasChanged": false,
-      "hash": "3d28e62cb4ec1dbc9ab526c46f4968282a18888d3ca532f6d6ddf939a6216e72"
+      "hash": "65f8ed8ebbaea5d853545358aca4cbe4c016cb238ff164325c7b96ea18f2b1ae"
     }
   }
 }

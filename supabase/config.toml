@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.discover]
 verify_jwt = true
+
+[functions.match]
+verify_jwt = true
