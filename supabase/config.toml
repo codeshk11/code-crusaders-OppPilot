@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.extract-listing]
 verify_jwt = false
+
+[functions.discover]
+verify_jwt = true

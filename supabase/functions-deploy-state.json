@@ -1,17 +1,21 @@
 {
   "projectId": "72337887",
   "functions": {
-    "tf-search": {
-      "hasChanged": false,
-      "hash": "15a1af6185f46a85714265f109f9446dde0a3f537fa2514ab375d0756c6709ca"
-    },
     "extract-listing": {
       "hasChanged": false,
-      "hash": "94f348f61dfac917ca28718b3bf94c3a5279a177520b15d05c25178e07add22d"
+      "hash": "61c7943c78e6b89d7b215c0bca3c222f4c99ae3219a436d39f2edf6c74e7e63b"
     },
     "tf-fetch": {
       "hasChanged": false,
       "hash": "4873ef023a2b4478a692cfe91cebf700deb5e0bc2fad0e5421fc7877be093fed"
+    },
+    "tf-search": {
+      "hasChanged": false,
+      "hash": "15a1af6185f46a85714265f109f9446dde0a3f537fa2514ab375d0756c6709ca"
+    },
+    "discover": {
+      "hasChanged": false,
+      "hash": "3d28e62cb4ec1dbc9ab526c46f4968282a18888d3ca532f6d6ddf939a6216e72"
     }
   }
 }
