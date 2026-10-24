@@ -1,0 +1,8 @@
+[functions.tf-search]
+verify_jwt = false
+
+[functions.tf-fetch]
+verify_jwt = false
+
+[functions.extract-listing]
+verify_jwt = false
