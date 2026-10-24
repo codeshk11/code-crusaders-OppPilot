@@ -49,6 +49,7 @@ interface MatchRow {
 
 interface EnrichedMatch extends MatchRow {
   listing: Listing;
+  matched_by: string;
 }
 
 function errorResponse(message: string, status = 500) {
@@ -65,14 +66,108 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
-function parseDocuments(doc: unknown): string[] {
-  if (Array.isArray(doc)) {
-    return doc.filter((d): d is string => typeof d === "string");
-  }
-  return [];
+// --- AI matching via TinyFish Agent API ---
+
+const MATCH_OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    score: { type: "integer", minimum: 0, maximum: 100 },
+    why_match: { type: "string" },
+    missing: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+  required: ["score", "why_match", "missing"],
+} as const;
+
+function buildAgentGoal(profile: Profile, listing: Listing): string {
+  const profileLines = [
+    `Student branch: ${profile.branch ?? "not specified"}`,
+    `Year of study: ${profile.year ?? "not specified"}`,
+    `State: ${profile.state ?? "not specified"}`,
+    `Category: ${profile.category ?? "not specified"}`,
+    `CGPA: ${profile.cgpa != null ? profile.cgpa : "not specified"}`,
+    `Interests: ${(profile.interests ?? []).join(", ") || "not specified"}`,
+    `Skills: ${(profile.skills ?? []).join(", ") || "not specified"}`,
+  ].join("\n");
+
+  return `You are an opportunity-matching assistant for Indian college students.
+
+A student has this profile:
+${profileLines}
+
+The opportunity being evaluated:
+- Title: ${listing.title}
+- Type: ${listing.type ?? "unknown"}
+- URL: ${listing.source_url ?? listing.url ?? "unknown"}
+- Deadline: ${listing.deadline ?? "not specified"}
+- Eligibility text: ${listing.eligibility ?? "not specified"}
+- Summary: ${listing.summary ?? "not specified"}
+
+Read this page and evaluate how well this opportunity matches the student's profile.
+
+Return a match score from 0 to 100 (higher = better fit), a "why_match" explanation in exactly 2 short sentences, and a "missing" array listing any unmet criteria the student does not satisfy.`;
 }
 
-function computeMatch(profile: Profile, listing: Listing): MatchResult {
+async function aiMatch(
+  profile: Profile,
+  listing: Listing,
+  apiKey: string,
+): Promise<MatchResult | null> {
+  const url = listing.source_url ?? listing.url;
+  if (!url) return null;
+
+  const goal = buildAgentGoal(profile, listing);
+
+  try {
+    const res = await fetch("https://agent.tinyfish.ai/v1/automation/run", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+      },
+      body: JSON.stringify({
+        url,
+        goal,
+        output_schema: MATCH_OUTPUT_SCHEMA,
+        browser_profile: "lite",
+      }),
+    });
+
+    if (!res.ok) {
+      console.error(`TinyFish agent failed (${res.status}) for ${url}`);
+      return null;
+    }
+
+    const data = await res.json().catch(() => null);
+    if (!data) return null;
+
+    // The result is in data.result (structured per output_schema).
+    const result = data.result ?? data;
+
+    const score = typeof result.score === "number" ? result.score : null;
+    const whyMatch = typeof result.why_match === "string" ? result.why_match : null;
+    const missing = Array.isArray(result.missing)
+      ? result.missing.filter((m: unknown): m is string => typeof m === "string")
+      : null;
+
+    if (score === null || whyMatch === null) return null;
+
+    return {
+      score: Math.max(0, Math.min(100, Math.round(score))),
+      why_match: whyMatch,
+      missing: missing ?? [],
+    };
+  } catch (err) {
+    console.error(`TinyFish agent error for ${url}:`, err);
+    return null;
+  }
+}
+
+// --- Heuristic fallback (used if the AI call fails) ---
+
+function computeHeuristicMatch(profile: Profile, listing: Listing): MatchResult {
   let score = 50;
   const reasons: string[] = [];
   const missing: string[] = [];
@@ -83,7 +178,6 @@ function computeMatch(profile: Profile, listing: Listing): MatchResult {
     listing.summary ?? "",
   ].join(" ").toLowerCase();
 
-  // Branch match
   if (profile.branch) {
     const branchLower = profile.branch.toLowerCase();
     if (listingText.includes(branchLower) || listingText.includes("all branches") || listingText.includes("any branch")) {
@@ -95,7 +189,6 @@ function computeMatch(profile: Profile, listing: Listing): MatchResult {
     }
   }
 
-  // Year match
   if (profile.year) {
     if (listingText.includes(profile.year.toLowerCase()) || listingText.includes("all years") || listingText.includes("any year")) {
       score += 10;
@@ -105,15 +198,11 @@ function computeMatch(profile: Profile, listing: Listing): MatchResult {
     }
   }
 
-  // Category match
-  if (profile.category) {
-    if (listingText.includes(profile.category.toLowerCase())) {
-      score += 10;
-      reasons.push(`Your category (${profile.category}) is mentioned.`);
-    }
+  if (profile.category && listingText.includes(profile.category.toLowerCase())) {
+    score += 10;
+    reasons.push(`Your category (${profile.category}) is mentioned.`);
   }
 
-  // State match
   if (profile.state) {
     if (listingText.includes(profile.state.toLowerCase()) || listingText.includes("all india") || listingText.includes("pan india")) {
       score += 10;
@@ -123,7 +212,6 @@ function computeMatch(profile: Profile, listing: Listing): MatchResult {
     }
   }
 
-  // CGPA match
   if (profile.cgpa != null) {
     const cgpaText = listingText.match(/(\d+(?:\.\d+)?)\s*(?:cgpa|gpa|minimum)/);
     if (cgpaText) {
@@ -138,7 +226,6 @@ function computeMatch(profile: Profile, listing: Listing): MatchResult {
     }
   }
 
-  // Interest alignment with listing type
   if (profile.interests && listing.type) {
     const typeLower = listing.type.toLowerCase();
     const interestMap: Record<string, string> = {
@@ -154,7 +241,6 @@ function computeMatch(profile: Profile, listing: Listing): MatchResult {
     }
   }
 
-  // URL authority bonus
   if (listing.source_url) {
     try {
       const host = new URL(listing.source_url).hostname.toLowerCase();
@@ -171,7 +257,6 @@ function computeMatch(profile: Profile, listing: Listing): MatchResult {
     } catch { /* ignore */ }
   }
 
-  // Deadline freshness
   if (listing.deadline) {
     const deadline = new Date(listing.deadline);
     const now = new Date();
@@ -185,10 +270,8 @@ function computeMatch(profile: Profile, listing: Listing): MatchResult {
     }
   }
 
-  // Clamp score
   score = Math.max(0, Math.min(100, score));
 
-  // Build why_match (2 short sentences)
   let whyMatch: string;
   if (reasons.length >= 2) {
     whyMatch = reasons.slice(0, 2).join(" ");
@@ -213,7 +296,6 @@ Deno.serve(async (req: Request) => {
       return errorResponse("Only POST is supported.", 405);
     }
 
-    // Auth: extract the user's JWT.
     const authHeader = req.headers.get("Authorization") ?? "";
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
     if (!token) {
@@ -238,7 +320,6 @@ Deno.serve(async (req: Request) => {
 
     const userId = userData.user.id;
 
-    // Fetch profile.
     const { data: profileData, error: profileError } = await userClient
       .from("profiles")
       .select("*")
@@ -251,7 +332,6 @@ Deno.serve(async (req: Request) => {
 
     const profile = profileData as Profile;
 
-    // Parse the request body for optional listing_ids, or fetch all recent listings.
     const body = await req.json().catch(() => ({}));
     const listingIds: string[] | undefined = body?.listing_ids;
 
@@ -280,16 +360,32 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ matches: [], message: "No listings to match." });
     }
 
-    // Compute matches for each listing.
+    const tinyfishKey = Deno.env.get("TINYFISH_API_KEY");
+
     const matches: EnrichedMatch[] = [];
 
     for (let i = 0; i < listings.length; i++) {
       const listing = listings[i];
-      const matchResult = computeMatch(profile, listing);
 
-      // Upsert into matches table. Use service-role client for the write
-      // to avoid any RLS edge cases — but matches is user-owned, so we use
-      // the user client. Actually matches has RLS on user_id, so user client works.
+      // Try AI matching first; fall back to heuristic if AI unavailable or fails.
+      let matchResult: MatchResult;
+      let matchedBy: string;
+
+      if (tinyfishKey) {
+        const aiResult = await aiMatch(profile, listing, tinyfishKey);
+        if (aiResult) {
+          matchResult = aiResult;
+          matchedBy = "ai";
+        } else {
+          matchResult = computeHeuristicMatch(profile, listing);
+          matchedBy = "heuristic";
+        }
+      } else {
+        matchResult = computeHeuristicMatch(profile, listing);
+        matchedBy = "heuristic";
+      }
+
+      // Upsert into matches table.
       const { data: existing } = await userClient
         .from("matches")
         .select("id")
@@ -343,12 +439,17 @@ Deno.serve(async (req: Request) => {
         why_match: matchResult.why_match,
         missing: matchResult.missing,
         listing,
+        matched_by: matchedBy,
       });
 
-      if (i < listings.length - 1) await sleep(200);
+      // Small delay between listings. Agent runs take ~30s each, so
+      // no artificial delay needed between AI calls; but keep a small
+      // pause for heuristic mode to avoid hammering the DB.
+      if (matchedBy === "heuristic" && i < listings.length - 1) {
+        await sleep(200);
+      }
     }
 
-    // Sort by score descending.
     matches.sort((a, b) => b.score - a.score);
 
     return jsonResponse({ matches });

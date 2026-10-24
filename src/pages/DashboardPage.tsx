@@ -16,6 +16,7 @@ interface MatchData {
   score: number;
   why_match: string;
   missing: string[];
+  matched_by?: string;
 }
 
 interface DiscoveredListing {
@@ -200,15 +201,15 @@ export default function DashboardPage({ onSignOut }: DashboardPageProps) {
           setStep('verifying');
           setStepDetail('Fetching and verifying official pages...');
         }
-      }, 20000);
+      }, 25000);
 
       const matchTimer = setTimeout(() => {
         if (stepRef.current === 'verifying') {
           stepRef.current = 'matching';
           setStep('matching');
-          setStepDetail('Matching listings to your profile...');
+          setStepDetail('AI is reading each page and matching it to your profile...');
         }
-      }, 45000);
+      }, 60000);
 
       const res = await fetch(functionUrl, {
         method: 'POST',
@@ -674,6 +675,12 @@ function TopMatchCard({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <DeadlineBadge deadline={listing.deadline} />
         <VerifiedBadge lastVerified={listing.last_verified_at ?? null} />
+        {listing.match?.matched_by === 'ai' && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-lavender-300 bg-lavender-50 px-2.5 py-0.5 text-xs font-medium text-lavender-400">
+            <Sparkles className="h-3 w-3" />
+            AI-matched
+          </span>
+        )}
         {listing.cached && (
           <span className="inline-flex items-center gap-1 rounded-full border border-mint-300 bg-mint-50 px-2.5 py-0.5 text-xs font-medium text-mint-500">
             <Clock className="h-3 w-3" />
@@ -762,6 +769,12 @@ function OpportunityCard({
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
         <DeadlineBadge deadline={listing.deadline} />
         <VerifiedBadge lastVerified={listing.last_verified_at ?? null} />
+        {listing.match?.matched_by === 'ai' && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-lavender-300 bg-lavender-50 px-2.5 py-0.5 text-xs font-medium text-lavender-400">
+            <Sparkles className="h-3 w-3" />
+            AI-matched
+          </span>
+        )}
       </div>
 
       {/* Summary */}
