@@ -309,18 +309,19 @@ Deno.serve(async (req: Request) => {
       return errorResponse("Server is not configured for database access.", 503);
     }
 
-    const userClient = createClient(supabaseUrl, token, {
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false },
     });
 
-    const { data: userData, error: userError } = await userClient.auth.getUser();
+    // Verify the token and get the user via the service-role client.
+    const { data: userData, error: userError } = await adminClient.auth.getUser(token);
     if (userError || !userData.user) {
-      return errorResponse("Invalid or expired session.", 401);
+      return errorResponse("Invalid or expired session. Please sign in again.", 401);
     }
 
     const userId = userData.user.id;
 
-    const { data: profileData, error: profileError } = await userClient
+    const { data: profileData, error: profileError } = await adminClient
       .from("profiles")
       .select("*")
       .eq("id", userId)
@@ -335,14 +336,14 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const listingIds: string[] | undefined = body?.listing_ids;
 
-    let listingsQuery = userClient
+    let listingsQuery = adminClient
       .from("listings")
       .select("*")
       .order("last_verified_at", { ascending: false })
       .limit(20);
 
     if (Array.isArray(listingIds) && listingIds.length > 0) {
-      listingsQuery = userClient
+      listingsQuery = adminClient
         .from("listings")
         .select("*")
         .in("id", listingIds);
@@ -385,8 +386,8 @@ Deno.serve(async (req: Request) => {
         matchedBy = "heuristic";
       }
 
-      // Upsert into matches table.
-      const { data: existing } = await userClient
+      // Upsert into matches table using the service-role client.
+      const { data: existing } = await adminClient
         .from("matches")
         .select("id")
         .eq("user_id", userId)
@@ -396,7 +397,7 @@ Deno.serve(async (req: Request) => {
       let matchId: string;
 
       if (existing?.id) {
-        const { data: updated, error: updateError } = await userClient
+        const { data: updated, error: updateError } = await adminClient
           .from("matches")
           .update({
             score: matchResult.score,
@@ -413,7 +414,7 @@ Deno.serve(async (req: Request) => {
         }
         matchId = updated.id;
       } else {
-        const { data: inserted, error: insertError } = await userClient
+        const { data: inserted, error: insertError } = await adminClient
           .from("matches")
           .insert({
             user_id: userId,

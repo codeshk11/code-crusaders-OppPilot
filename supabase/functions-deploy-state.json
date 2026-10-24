@@ -3,11 +3,15 @@
   "functions": {
     "discover": {
       "hasChanged": false,
-      "hash": "7e6a7baa13a18e39da2f106d9349637b9a934e916dfd2d15c48635e8c02dc7a2"
+      "hash": "462d29ce487562c263d4e6b68c2b7fc3c0835cc2018d92c085ee0bb8809f4500"
     },
     "extract-listing": {
       "hasChanged": false,
       "hash": "61c7943c78e6b89d7b215c0bca3c222f4c99ae3219a436d39f2edf6c74e7e63b"
+    },
+    "match": {
+      "hasChanged": false,
+      "hash": "0a75e51597387ecdb573ac9e295b59c16096e6676bc7e622692799199670f7d8"
     },
     "tf-fetch": {
       "hasChanged": false,
@@ -16,10 +20,6 @@
     "tf-search": {
       "hasChanged": false,
       "hash": "15a1af6185f46a85714265f109f9446dde0a3f537fa2514ab375d0756c6709ca"
-    },
-    "match": {
-      "hasChanged": false,
-      "hash": "65f8ed8ebbaea5d853545358aca4cbe4c016cb238ff164325c7b96ea18f2b1ae"
     }
   }
 }

@@ -186,11 +186,19 @@ export default function DashboardPage({ onSignOut }: DashboardPageProps) {
 
     try {
       const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/discover`;
-      const session = await supabase.auth.getSession();
-      const accessToken = session.data.session?.access_token;
+
+      // Ensure we have a fresh session — refresh the token if needed.
+      const { data: sessionData } = await supabase.auth.getSession();
+      let accessToken = sessionData.session?.access_token;
 
       if (!accessToken) {
-        throw new Error('Your session has expired. Please sign in again.');
+        // Try refreshing the session explicitly.
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        accessToken = refreshed.session?.access_token;
+      }
+
+      if (!accessToken) {
+        throw new Error('Your session has expired. Please sign out and sign in again.');
       }
 
       setStepDetail('Searching scholarships, internships, and hackathons for you...');

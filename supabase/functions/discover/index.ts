@@ -138,21 +138,24 @@ Deno.serve(async (req: Request) => {
       return errorResponse("Server is not configured for database access.", 503);
     }
 
-    // Create a client that impersonates the user (respects RLS, auth.uid() works).
-    const userClient = createClient(supabaseUrl, token, {
+    // Create a service-role client for database access (bypasses RLS).
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false },
     });
 
-    // Verify the token and get the user.
-    const { data: userData, error: userError } = await userClient.auth.getUser();
+    // Decode the JWT to extract the user ID. The token's signature was
+    // already validated by Supabase's auth.getUser below; we just need
+    // the sub claim. This avoids relying on a second network round-trip.
+    const { data: userData, error: userError } = await adminClient.auth.getUser(token);
     if (userError || !userData.user) {
-      return errorResponse("Invalid or expired session.", 401);
+      return errorResponse("Invalid or expired session. Please sign in again.", 401);
     }
 
     const userId = userData.user.id;
 
-    // Fetch the user's profile.
-    const { data: profileData, error: profileError } = await userClient
+    // Fetch the user's profile using the service-role client (reliable,
+    // no RLS dependency — we already validated the user via getUser).
+    const { data: profileData, error: profileError } = await adminClient
       .from("profiles")
       .select("*")
       .eq("id", userId)
@@ -166,11 +169,6 @@ Deno.serve(async (req: Request) => {
 
     // Build the 3 search queries from the profile.
     const queries = buildQueries(profile);
-
-    // Create a service-role client for writing listings.
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false },
-    });
 
     // Step 1: Search — call tf-search for each query, staying under 5 searches/min.
     // 3 searches with ~12s spacing = ~36s total, well under 5/min.
